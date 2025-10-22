@@ -106,14 +106,9 @@ conn_str = (
 # ============================================================================
 # === CONSTANTS ==============================================================
 # ============================================================================
-SYMBOLS = ["EUR_USD", "GBP_USD", "USD_JPY", 
-           "USD_CAD", "NAS100_USD", "WHEAT_USD"]
+SYMBOLS = ["EUR_USD", "GBP_USD", "USD_JPY", "USD_CAD", "NAS100_USD", "WHEAT_USD"]
 
-TIMEFRAMES = {
-    "M15": "M15",
-    "H1": "H1",
-    "H4": "H4"
-}
+TIMEFRAMES = {"M15": "M15", "H1": "H1", "H4": "H4"}
 
 seen_retracements = set()
 last_cleared_date = None
@@ -311,10 +306,14 @@ def is_within_trading_hours():
     return (weekday < 5) and (start_time <= current_time <= end_time)
 
 def run_collector():
+    """Main collector loop for all symbols/timeframes."""
     retracement_hits = []
+
+    # open connection lazily
     conn, cursor = open_db()
     log.info("✅ Connected to Azure for run_collector")
 
+    # CREATE TABLE if needed
     cursor.execute("""
     IF OBJECT_ID('dbo.TestDataset','U') IS NULL
         CREATE TABLE dbo.TestDataset(
@@ -325,6 +324,7 @@ def run_collector():
     """)
     conn.commit()
 
+    # --- loop through symbols/timeframes ---
     for symbol in SYMBOLS:
         for tf, granularity in TIMEFRAMES.items():
             minutes = {"M15": 15, "H1": 60, "H4": 240}[tf]
@@ -339,23 +339,33 @@ def run_collector():
             try:
                 df_with_ote = detect_ote(df)
                 ote_text = format_ote_as_text(df_with_ote)
+
                 retrace_rows = df_with_ote[df_with_ote["Retracement_Flag"]]
                 for _, row in retrace_rows.iterrows():
                     key = (symbol, tf, str(row["FVG_Date"]))
                     if key not in seen_retracements:
                         seen_retracements.add(key)
-                        retracement_hits.append(f"🟢 {symbol}_{tf} (FVG {row['FVG_Date']}) ")
+
+                        # Determine direction arrow based on FVG type
+                        fvg_type = "Bullish" if row["Bullish_FVG_Flag"] else "Bearish"
+                        direction = "⬆️" if fvg_type == "Bullish" else "⬇️"
+
+                        # Format timestamp nicely
+                        fvg_date_str = row["FVG_Date"].strftime("%Y-%m-%d %H:%M")
+
+                        retracement_hits.append(f"{direction} {symbol}_{tf} (FVG {fvg_date_str})")
             except Exception as e:
                 ote_text = "Error in OTE detection"
                 log.error("❌ %s_%s error: %s", symbol, tf, e)
 
             upsert_snapshot(cursor, conn, f"{symbol}_{tf}", ohlc_text, ote_text)
 
-    conn.close()
+    conn.close()        # <-- release Azure resource immediately
     log.info("🔌 Azure SQL connection closed")
 
     if retracement_hits:
         send_telegram_message("NEW retracements:\n" + "\n".join(retracement_hits))
+
 
 def check_and_clear_database():
     global last_cleared_date
@@ -403,3 +413,4 @@ if __name__ == "__main__":
     if test_api_connection():
         log.info("Starting monitor. Program will only run between 12:45 PM and 3:00 PM UK time.")
         start_realtime_monitor(interval=240)
+

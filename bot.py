@@ -106,9 +106,14 @@ conn_str = (
 # ============================================================================
 # === CONSTANTS ==============================================================
 # ============================================================================
-SYMBOLS = ["EUR_USD", "GBP_USD", "USD_JPY", "USD_CAD", "NAS100_USD", "WHEAT_USD"]
+SYMBOLS = ["EUR_USD", "GBP_USD", "USD_JPY", 
+           "USD_CAD", "NAS100_USD", "EUR_CAD"]
 
-TIMEFRAMES = {"M15": "M15", "H1": "H1", "H4": "H4"}
+TIMEFRAMES = {
+    "M15": "M15",
+    "H1": "H1",
+    "H4": "H4"
+}
 
 seen_retracements = set()
 last_cleared_date = None
@@ -346,14 +351,10 @@ def run_collector():
                     if key not in seen_retracements:
                         seen_retracements.add(key)
 
-                        # Determine direction arrow based on FVG type
-                        fvg_type = "Bullish" if row["Bullish_FVG_Flag"] else "Bearish"
-                        direction = "⬆️" if fvg_type == "Bullish" else "⬇️"
-
                         # Format timestamp nicely
                         fvg_date_str = row["FVG_Date"].strftime("%Y-%m-%d %H:%M")
 
-                        retracement_hits.append(f"{direction} {symbol}_{tf} (FVG {fvg_date_str})")
+                        retracement_hits.append(f"🟢 {symbol}_{tf} (FVG {fvg_date_str})")
             except Exception as e:
                 ote_text = "Error in OTE detection"
                 log.error("❌ %s_%s error: %s", symbol, tf, e)
@@ -413,4 +414,3 @@ if __name__ == "__main__":
     if test_api_connection():
         log.info("Starting monitor. Program will only run between 12:45 PM and 3:00 PM UK time.")
         start_realtime_monitor(interval=240)
-
